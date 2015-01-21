@@ -14,88 +14,43 @@ var lastBackgroundChange = new Date() - backgroundTimeout;
 
 function init() {
   setupControls();
-  var socket = io.connect();
+    console.log('done setup')
+  var socket = io.connect('tools-webgrid-tomcat.eqiad.wmflabs');
   socket.on('message', function(msg) {
-    
+      console.log('inside----',msg)
     // apply filters
     if (pause) return;
+    /*
     if (! wikipediaFilter(msg)) return;
     if (! userFilter(msg)) return;
     if (! namespaceFilter(msg)) return;
     if (Math.abs(msg.delta) < deltaLimit) return;
-
+    */
     // update the stream
     addUpdate(msg);
     removeOld();
-
   });
 }
 
 function addUpdate(msg) {
-  var lang = $('<span>').attr({'class': 'lang'}).text('[' + msg.wikipediaShort + ']');
-  var a = $('<a>').attr({'class': 'page', 'href': msg.url, 'title': msg.comment, target: '_new'}).text(msg.page);
-  var delta;
-  if (msg.delta == null) delta = "n/a";
-  else if (msg.delta < 0) delta = msg.delta;
-  else delta = "+" + msg.delta;
-  delta = $('<span>').attr({'class': 'delta'}).text(delta);
+  var lang = $('<span>').attr({'class': 'lang'}).text('[' + msg.wiki + ']');
+  var a = $('<a>').attr({'class': 'page', 'href': msg.server_url, 'title': msg.comment, target: '_new'}).text(msg.title);
+  // TODO show doi
+  //var delta = msg.
+  //delta = $('<span>').attr({'class': 'delta'}).text(delta);
 
   updateClasses = ['update'];
-  if (msg.newPage) updateClasses.push('newPage');
-  if (msg.unpatrolled) updateClasses.push('unpatrolled');
+  if (msg.type == 'new') updateClasses.push('newPage');
+  // if (msg.unpatrolled) updateClasses.push('unpatrolled');
 
   var d = $('<div>').attr({'class': updateClasses.join(' ')})
     .append(userIcon(msg))
     .append(lang)
     .append(a)
-    .append(delta)
+    .append(1) // TODO put delta here
     .hide();
   $('#updates').prepend(d);
   d.slideDown('medium');
-
-  // update background with wikimedia commons image, but not too often
-  if (msg.wikipediaShort 
-    && showBackground
-    && msg.page.match('File:') 
-    && msg.page.match(/(png|jpg)$/i)
-    && ! fetchingBackground
-    && (new Date() - lastBackgroundChange > backgroundTimeout)) {
-    var url = "/commons-image/" + encodeURIComponent(msg.page);
-    fetchingBackground = true;
-    console.log("fetching background image: " + url);
-    $.getJSON(url, function(imageInfo) {
-      for (pageId in imageInfo['query']['pages']) break;
-      try {
-        var title = imageInfo['query']['pages'][pageId]['title'];
-        var image = imageInfo['query']['pages'][pageId]['imageinfo'][0];
-        if (image && image['width'] > 800 && image['height'] > 800 &&
-            image['width'] < 3500 && image['height'] < 3500) {
-          console.log('found suitable image with dimensions: ' + image['width'] + ' x ' + image['height']);
-          // change the background image
-          $.backstretch(image['url'], {speed: 1000}, function() {
-            lastBackgroundChange = new Date();
-            fetchingBackground = false;
-          });
-          // also update the image attribution information
-          $("#backgroundInfo").fadeOut(function() {
-            $("#backgroundInfo").empty();
-            $("#backgroundInfo").append(
-              $("<a>").attr({"href": image.descriptionurl}).text(title), 
-              "<br> by ",
-              $("<a>").attr({"href": "http://commons.wikimedia.org/wiki/User:" + image.user}).text(image.user)
-            );
-            $("#backgroundInfo").fadeIn();
-          });
-        } else {
-          console.log("image not the right size: " + image['width'] + ' x ' + image['height'])
-        }
-      } catch(e) {
-        console.log("error while fetching commons image " + url + " : " + e);
-      } finally {
-        fetchingBackground = false;
-      }
-    });
-  }
 }
 
 function removeOld() {
@@ -124,19 +79,19 @@ function togglePause() {
 
 function userIcon(msg) {
   // construct a link to the user profile
-  wikipediaHost = msg.wikipedia.replace('#', '') + '.org'
+  wikipediaHost = msg.server_url
   userLink= $("<a>").attr({
-    href: msg.userUrl,
+    href: wikipediaHost+"/wiki/User:"+msg.user,
     target: '_new',
   });
 
   var src = title = null;
-  if (msg.robot) {
+  if (msg.bot) {
     src = '/images/robot.png';
     title = 'Bot: ';
-  } else if (msg.anonymous) {
-    src = '/images/question.png';
-    title = 'Anonymous: ';
+//  } else if (msg.anonymous) {
+//    src = '/images/question.png';
+//    title = 'Anonymous: '; TODO check if msg.user is an IP address
   } else {
     src = '/images/person.png';
     title = 'User: ';
@@ -218,7 +173,7 @@ function setupControls() {
 
 function wikipediaFilter(msg) {
   if (wikipediaLimit == "all") return true;
-  if (wikipediaLimit == msg.channel) return true;
+  if (wikipediaLimit == msg.wiki) return true;
   return false;
 }
 
@@ -229,12 +184,12 @@ function namespaceFilter(msg) {
 }
 
 function userFilter(msg) {
-  if (! includeRobots && msg.robot) {
+  if (! includeRobots && msg.bot) {
     return false;
-  } else if (! includeAnonymous && msg.anonymous) {
-    return false;
-  } else if (! includeUsers && (! msg.anonymous && ! msg.robot)) {
-    return false;
+//  } else if (! includeAnonymous && msg.anonymous) {
+//    return false; // TODO check if user is IP address
+//  } else if (! includeUsers && (! msg.anonymous && ! msg.bot)) {
+//    return false;
   }
   return true;
 }
